@@ -1,0 +1,22 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; background: #05060a; }
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Courier New", monospace;
+}
+
+#wrap {
+  line-height: 0;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.9);
+}
+
+canvas {
+  display: block;
+  background: #05060a;
+  border: 1px solid #1a1d27;
+  cursor: pointer;
+}
