@@ -30,6 +30,7 @@ for (let i = 0; i < 70; i++) {
 // --- game state ------------------------------------------------------------
 let state, frog, obstacles, score, speed;
 let moonFace = 0;          // 0 = grin, 1 = tongue-out; toggles every 10s
+let happyTimer = 0;        // >0 while the frog does a "woohoo" after scoring
 
 function reset() {
   state = "start";          // "start" | "playing" | "dead"
@@ -37,6 +38,7 @@ function reset() {
   obstacles = [];
   score = 0;
   speed = SPEED_BASE;
+  happyTimer = 0;
 }
 reset();
 
@@ -52,6 +54,8 @@ function spawnIfNeeded() {
 function update(dt) {
   if (state !== "playing") return;
 
+  if (happyTimer > 0) happyTimer -= dt;
+
   applyGravity(frog, dt);
   spawnIfNeeded();
   for (const o of obstacles) moveObstacle(o, speed * dt);
@@ -59,7 +63,9 @@ function update(dt) {
     obstacles.shift();
   }
 
+  const prevScore = score;
   score = updateScore(frog, obstacles, score);
+  if (score > prevScore) happyTimer = 36;   // ~0.6s of "woohoo" at 60fps
   speed = SPEED_BASE + score * 0.04;   // the night gets faster
 
   if (checkCollision(frog, obstacles, W, H)) {
@@ -315,7 +321,7 @@ function drawObstacle(o) {
 }
 
 // The frog face — drawn from primitives, dead-eyed and resigned.
-function drawFrog(f) {
+function drawFrog(f, happy) {
   const { x, y, vy, r } = f;
   ctx.save();
   ctx.translate(x, y);
@@ -362,50 +368,65 @@ function drawFrog(f) {
     ctx.stroke();
   }
 
-  // eyes — narrow, almond-shaped, upturned at the outer corner, half-lidded
-  for (const [ex, outer] of [[-15, -1], [15, 1]]) {
-    ctx.save();
-    ctx.translate(ex, -12);
-    ctx.rotate(outer * -0.18);          // lift the outer corner
-    const aw = 12.5, ah = 7.5;          // wide + short = almond
-
-    ctx.fillStyle = "#d98a2b";          // amber almond
-    ctx.beginPath();
-    ctx.ellipse(0, 0, aw, ah, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.save();                         // interior, clipped to the almond
-    ctx.beginPath();
-    ctx.ellipse(0, 0, aw, ah, 0, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.fillStyle = "#b96e1f";          // amber depth
-    ctx.beginPath();
-    ctx.arc(0, 1.5, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#161616";          // pupil
-    ctx.beginPath();
-    ctx.arc(0, 2, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = GREEN_D;            // upper half-lid hoods the top
-    ctx.fillRect(-aw - 1, -ah - 1, (aw + 1) * 2, ah + 0.5);
-    ctx.restore();
-
-    ctx.lineWidth = 2.4;                // almond outline
+  // eyes
+  if (happy) {
+    // scrunched-up happy eyes (^^)
     ctx.strokeStyle = OUT;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, aw, ah, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.lineWidth = 1.6;                // upper-lid crease
-    ctx.beginPath();
-    ctx.moveTo(-aw + 1, -1);
-    ctx.quadraticCurveTo(0, -ah - 1.5, aw - 1, -1);
-    ctx.stroke();
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    for (const ex of [-15, 15]) {
+      ctx.beginPath();
+      ctx.moveTo(ex - 9, -10);
+      ctx.quadraticCurveTo(ex, -22, ex + 9, -10);
+      ctx.stroke();
+    }
+    ctx.lineCap = "butt";
+  } else {
+    // narrow, almond-shaped, upturned at the outer corner, half-lidded
+    for (const [ex, outer] of [[-15, -1], [15, 1]]) {
+      ctx.save();
+      ctx.translate(ex, -12);
+      ctx.rotate(outer * -0.18);          // lift the outer corner
+      const aw = 12.5, ah = 7.5;          // wide + short = almond
 
-    ctx.fillStyle = "rgba(255,255,255,0.85)";  // faint glint
-    ctx.beginPath();
-    ctx.ellipse(-3.5, 2.5, 1.5, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+      ctx.fillStyle = "#d98a2b";          // amber almond
+      ctx.beginPath();
+      ctx.ellipse(0, 0, aw, ah, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();                         // interior, clipped to the almond
+      ctx.beginPath();
+      ctx.ellipse(0, 0, aw, ah, 0, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.fillStyle = "#b96e1f";          // amber depth
+      ctx.beginPath();
+      ctx.arc(0, 1.5, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#161616";          // pupil
+      ctx.beginPath();
+      ctx.arc(0, 2, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = GREEN_D;            // upper half-lid hoods the top
+      ctx.fillRect(-aw - 1, -ah - 1, (aw + 1) * 2, ah + 0.5);
+      ctx.restore();
+
+      ctx.lineWidth = 2.4;                // almond outline
+      ctx.strokeStyle = OUT;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, aw, ah, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1.6;                // upper-lid crease
+      ctx.beginPath();
+      ctx.moveTo(-aw + 1, -1);
+      ctx.quadraticCurveTo(0, -ah - 1.5, aw - 1, -1);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255,255,255,0.85)";  // faint glint
+      ctx.beginPath();
+      ctx.ellipse(-3.5, 2.5, 1.5, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   // nostrils
@@ -415,19 +436,39 @@ function drawFrog(f) {
   ctx.arc(5, 0, 1.6, 0, Math.PI * 2);
   ctx.fill();
 
-  // grim mouth, corners drooping
-  ctx.strokeStyle = OUT;
-  ctx.lineWidth = 3;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(-20, 12);
-  ctx.quadraticCurveTo(0, 16, 20, 12);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-20, 12); ctx.lineTo(-22, 15);
-  ctx.moveTo(20, 12); ctx.lineTo(22, 15);
-  ctx.stroke();
-  ctx.lineCap = "butt";
+  if (happy) {
+    // wide-open "woohoo!" mouth
+    ctx.fillStyle = "#3a1420";
+    ctx.strokeStyle = OUT;
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(-15, 11);
+    ctx.quadraticCurveTo(0, 6, 15, 11);     // open upper lip
+    ctx.quadraticCurveTo(12, 26, 0, 27);    // round down...
+    ctx.quadraticCurveTo(-12, 26, -15, 11); // ...and back up
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#d76b94";              // little tongue
+    ctx.beginPath();
+    ctx.ellipse(0, 22, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // grim mouth, corners drooping
+    ctx.strokeStyle = OUT;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-20, 12);
+    ctx.quadraticCurveTo(0, 16, 20, 12);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-20, 12); ctx.lineTo(-22, 15);
+    ctx.moveTo(20, 12); ctx.lineTo(22, 15);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+  }
 
   ctx.restore();
 }
@@ -478,7 +519,7 @@ function frame(now) {
   drawBackground();
   drawMoon();
   for (const o of obstacles) drawObstacle(o);
-  drawFrog(frog);
+  drawFrog(frog, happyTimer > 0);
   drawUI();
   requestAnimationFrame(frame);
 }
