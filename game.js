@@ -565,47 +565,48 @@ canvas.addEventListener("touchstart", (e) => {
   press();
 }, { passive: false });
 
-// --- sound: "DJ fucked" on every flap -------------------------------------
-const SOUND_URL = "dj-fucked.m4a";
-let audioCtx = null;
-let flapBuffer = null;
-let lastSource = null;
+// --- sound -----------------------------------------------------------------
+// iOS gotcha: the Web Audio API is silenced by the phone's mute switch and is
+// the most fragile path on iPhone. So the spoken "DJ fucked" clip plays through
+// a plain <audio> element (the media path, which plays through the mute switch),
+// and a tiny silent looping <audio> flips iOS into "playback" mode so the
+// synthesized laugh + woohoo come through as well.
 
-(async function loadSound() {
-  try {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const res = await fetch(SOUND_URL);
-    const data = await res.arrayBuffer();
-    flapBuffer = await audioCtx.decodeAudioData(data);
-    console.log("flap sound ready:", flapBuffer.duration.toFixed(2) + "s");
-  } catch (e) {
-    console.warn("flap sound failed to load:", e);
-  }
-})();
+const SOUND_URL = "dj-fucked.m4a";
+
+// The spoken clip — HTMLAudio so it plays on iOS.
+const flapAudio = new Audio(SOUND_URL);
+flapAudio.setAttribute("playsinline", "");
+flapAudio.preload = "auto";
+flapAudio.addEventListener("canplaythrough",
+  () => console.log("flap clip ready"), { once: true });
 
 function playFlapSound() {
-  if (!audioCtx || !flapBuffer) return;
-  if (audioCtx.state === "suspended") audioCtx.resume();   // unlock on first gesture
-  if (lastSource) {
-    try { lastSource.stop(); } catch (_) {}                // restart: cut the previous voice
-  }
-  const src = audioCtx.createBufferSource();
-  src.buffer = flapBuffer;
-  src.connect(audioCtx.destination);
-  src.start(0);
-  lastSource = src;
+  try {
+    flapAudio.currentTime = 0;            // restart on every tap
+    flapAudio.play().catch(() => {});
+  } catch (_) {}
 }
 
-// --- moon: a cheap squeaky giggle, synthesized (no file needed) -----------
-function playLaugh() {
-  if (!audioCtx) return;
+// Web Audio context, only for the synthesized sounds.
+let audioCtx = null;
+function getCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
   if (audioCtx.state === "suspended") audioCtx.resume();
-  const t0 = audioCtx.currentTime;
+  return audioCtx;
+}
+
+// The moon's cheap squeaky giggle.
+function playLaugh() {
+  const ac = getCtx();
+  const t0 = ac.currentTime;
   const beats = [0, 0.075, 0.15, 0.225, 0.3];     // hee-hee-hee-hee-hee
   const pitch = [820, 1000, 920, 1100, 980];      // wobbling, squirrel-ish
   beats.forEach((dt, i) => {
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
+    const o = ac.createOscillator();
+    const g = ac.createGain();
     o.type = "square";
     o.frequency.setValueAtTime(pitch[i], t0 + dt);
     o.frequency.exponentialRampToValueAtTime(pitch[i] * 1.25, t0 + dt + 0.05);
@@ -613,25 +614,18 @@ function playLaugh() {
     g.gain.exponentialRampToValueAtTime(0.16, t0 + dt + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.07);
     o.connect(g);
-    g.connect(audioCtx.destination);
+    g.connect(ac.destination);
     o.start(t0 + dt);
     o.stop(t0 + dt + 0.09);
   });
 }
 
-// Swap the moon's face every 10s, giggling on each switch.
-setInterval(() => {
-  moonFace ^= 1;
-  playLaugh();
-}, 10000);
-
 // A cheerful upward "woohoo" when the frog clears an obstacle.
 function playScoreSound() {
-  if (!audioCtx) return;
-  if (audioCtx.state === "suspended") audioCtx.resume();
-  const t0 = audioCtx.currentTime;
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
+  const ac = getCtx();
+  const t0 = ac.currentTime;
+  const o = ac.createOscillator();
+  const g = ac.createGain();
   o.type = "triangle";
   o.frequency.setValueAtTime(420, t0);
   o.frequency.exponentialRampToValueAtTime(880, t0 + 0.14);   // woo...
@@ -640,23 +634,48 @@ function playScoreSound() {
   g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.03);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.27);
   o.connect(g);
-  g.connect(audioCtx.destination);
+  g.connect(ac.destination);
   o.start(t0);
   o.stop(t0 + 0.3);
 }
 
-// iOS unlock: Safari keeps Web Audio muted until the first touch both resumes
-// the context AND plays a (silent) buffer inside that gesture.
+// Swap the moon's face every 10s, giggling on each switch.
+setInterval(() => {
+  moonFace ^= 1;
+  playLaugh();
+}, 10000);
+
+// --- iOS audio unlock ------------------------------------------------------
+// A 0.5s silent WAV, built in code (no file). Looping it flips iOS into
+// "playback" mode so Web Audio plays through the mute switch.
+function silentWavDataUri() {
+  const rate = 8000, n = rate * 0.5;          // 0.5s of 8-bit mono silence
+  const buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+  const s = (off, str) => {
+    for (let i = 0; i < str.length; i++) v.setUint8(off + i, str.charCodeAt(i));
+  };
+  s(0, "RIFF"); v.setUint32(4, 36 + n, true); s(8, "WAVE"); s(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate, true);
+  v.setUint16(32, 1, true); v.setUint16(34, 8, true); s(36, "data");
+  v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);   // 8-bit silence
+  let bin = "";
+  const b = new Uint8Array(buf);
+  for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+  return "data:audio/wav;base64," + btoa(bin);
+}
+
+const keepAlive = new Audio(silentWavDataUri());
+keepAlive.loop = true;
+keepAlive.setAttribute("playsinline", "");
+
 let audioUnlocked = false;
 function unlockAudio() {
-  if (audioUnlocked || !audioCtx) return;
-  audioCtx.resume();
-  const b = audioCtx.createBuffer(1, 1, 22050);
-  const s = audioCtx.createBufferSource();
-  s.buffer = b;
-  s.connect(audioCtx.destination);
-  s.start(0);
+  if (audioUnlocked) return;
   audioUnlocked = true;
+  getCtx();                            // create + resume the synth context
+  keepAlive.play().catch(() => {});    // flip iOS into "playback" mode
 }
 ["touchstart", "touchend", "mousedown", "keydown"].forEach((ev) =>
   window.addEventListener(ev, unlockAudio, { passive: true })
