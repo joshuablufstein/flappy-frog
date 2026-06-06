@@ -1,22 +1,33 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-html, body { height: 100%; background: #05060a; }
+html, body {
+  height: 100%;
+  width: 100%;
+  background: #05060a;
+  overflow: hidden;             /* no scrolling/cropping on phones */
+  overscroll-behavior: none;    /* no rubber-band bounce on iOS */
+}
 
 body {
+  position: fixed;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: "Courier New", monospace;
+  touch-action: manipulation;            /* kill the double-tap-to-zoom delay */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-#wrap {
-  line-height: 0;
-  box-shadow: 0 0 60px rgba(0, 0, 0, 0.9);
-}
+#wrap { line-height: 0; }
 
 canvas {
   display: block;
   background: #05060a;
-  border: 1px solid #1a1d27;
   cursor: pointer;
+  touch-action: none;          /* the canvas owns all touches (no scroll/zoom) */
+  /* on-screen size is set by JS (fitCanvas) to fit the device; the internal
+     resolution stays 480x640 so game coordinates never change */
 }

@@ -12,6 +12,17 @@ const ctx = canvas.getContext("2d");
 const W = canvas.width;
 const H = canvas.height;
 
+// Scale the canvas to fit the screen (iPhone included) while keeping the
+// 480x640 internal resolution, so every game coordinate stays the same.
+function fitCanvas() {
+  const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+  canvas.style.width = Math.round(W * scale) + "px";
+  canvas.style.height = Math.round(H * scale) + "px";
+}
+fitCanvas();
+window.addEventListener("resize", fitCanvas);
+window.addEventListener("orientationchange", fitCanvas);
+
 const SPEED_BASE = 2.6;     // how fast the world scrolls at score 0 (higher = faster)
 const SPAWN_GAP_X = 270;    // horizontal distance between screw pairs (more = easier)
 const GAP_HEIGHT = 225;     // vertical opening the frog flies through (more = easier)
@@ -65,7 +76,10 @@ function update(dt) {
 
   const prevScore = score;
   score = updateScore(frog, obstacles, score);
-  if (score > prevScore) happyTimer = 36;   // ~0.6s of "woohoo" at 60fps
+  if (score > prevScore) {
+    happyTimer = 36;          // ~0.6s of "woohoo" face at 60fps
+    playScoreSound();         // ...and the woohoo sound
+  }
   speed = SPEED_BASE + score * 0.04;   // the night gets faster
 
   if (checkCollision(frog, obstacles, W, H)) {
@@ -610,3 +624,40 @@ setInterval(() => {
   moonFace ^= 1;
   playLaugh();
 }, 10000);
+
+// A cheerful upward "woohoo" when the frog clears an obstacle.
+function playScoreSound() {
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  const t0 = audioCtx.currentTime;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = "triangle";
+  o.frequency.setValueAtTime(420, t0);
+  o.frequency.exponentialRampToValueAtTime(880, t0 + 0.14);   // woo...
+  o.frequency.exponentialRampToValueAtTime(770, t0 + 0.22);   // ...hoo
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.27);
+  o.connect(g);
+  g.connect(audioCtx.destination);
+  o.start(t0);
+  o.stop(t0 + 0.3);
+}
+
+// iOS unlock: Safari keeps Web Audio muted until the first touch both resumes
+// the context AND plays a (silent) buffer inside that gesture.
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked || !audioCtx) return;
+  audioCtx.resume();
+  const b = audioCtx.createBuffer(1, 1, 22050);
+  const s = audioCtx.createBufferSource();
+  s.buffer = b;
+  s.connect(audioCtx.destination);
+  s.start(0);
+  audioUnlocked = true;
+}
+["touchstart", "touchend", "mousedown", "keydown"].forEach((ev) =>
+  window.addEventListener(ev, unlockAudio, { passive: true })
+);
